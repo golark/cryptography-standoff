@@ -35,7 +35,7 @@ A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEO
 
 | Algorithm | Variant | C (Apple Clang) | Rust (`rustc`) | Delta (%) |
 | :--- | :--- | :--- | :--- | :--- |
-| **SHA-256** | Scalar | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | *— MB/s* | *—* |
+| **SHA-256** | Scalar | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) | *—* |
 | **SHA-256** | ARMv8 Crypto | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Scalar | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Hardware | *— MB/s* | *— MB/s* | *—* |
@@ -61,4 +61,17 @@ middle of 3 runs.
 Reference digests verified against `hashlib.sha256` across 9 vectors including the
 55/56-byte two-block padding boundary (see `vectors/sha256/kats.txt`).
 
-Rust scalar numbers to follow once `rust/src/sha256.rs` lands.
+### SHA-256, Scalar Track — Rust side (2026-08-22)
+
+Environment: Apple M1, rustc stable, `--release` (opt-level 3, LTO, codegen-units=1).
+Method: identical harness to C (`--bench`, 1000 warmup, `Instant` monotonic timing);
+criterion confirms (`sha256_43B` ≈ 520 ns, `sha256_4KiB` ≈ 32.6 µs).
+
+| Input size | Iterations | Avg time/hash | Throughput |
+| :--- | :--- | :--- | :--- |
+| 43 B ("The quick brown fox...") | 200,000 | ~513 ns | ~79.9 MB/s |
+| 4 KiB | 10,000 | ~32.9 µs | ~118.8 MB/s |
+
+Scalar verdict: statistical dead heat at small inputs; C edges ahead ~2–3% at 4 KiB.
+5/5 unit tests pass (KATs incl. padding boundaries); vectors regenerated and
+round-trip verified after a transcription error in the original `kats.txt`.
