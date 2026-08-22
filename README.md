@@ -35,9 +35,30 @@ A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEO
 
 | Algorithm | Variant | C (Apple Clang) | Rust (`rustc`) | Delta (%) |
 | :--- | :--- | :--- | :--- | :--- |
-| **SHA-256** | Scalar | *— MB/s* | *— MB/s* | *—* |
+| **SHA-256** | Scalar | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | *— MB/s* | *—* |
 | **SHA-256** | ARMv8 Crypto | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Scalar | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Hardware | *— MB/s* | *— MB/s* | *—* |
 | **Ed25519** | Scalar | *— ops/sec* | *— ops/sec* | *—* |
 | **Ed25519** | NEON SIMD | *— ops/sec* | *— ops/sec* | *—* |
+
+---
+
+## 4. Results Log
+
+### SHA-256, Scalar Track — C side (2026-08-22)
+
+Environment: Apple M1 (ARMv8-A), macOS 26.5.1, Apple clang 21.0.0 (`cc -O2 -Wall -Wextra -std=c11`).
+Method: `./rust-vs-c --bench <input> <iters>` — 1000 warmup hashes, then N timed iterations
+via `CLOCK_MONOTONIC`; reports average ns/hash and throughput. Values below are the
+middle of 3 runs.
+
+| Input size | Iterations | Avg time/hash | Throughput |
+| :--- | :--- | :--- | :--- |
+| 43 B ("The quick brown fox...") | 200,000 | ~519 ns | ~79.0 MB/s |
+| 4 KiB | 10,000 | ~32.0 µs | ~122.0 MB/s |
+
+Reference digests verified against `hashlib.sha256` across 9 vectors including the
+55/56-byte two-block padding boundary (see `vectors/sha256/kats.txt`).
+
+Rust scalar numbers to follow once `rust/src/sha256.rs` lands.
