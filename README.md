@@ -36,7 +36,7 @@ A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEO
 | Algorithm | Variant | C (Apple Clang) | Rust (`rustc`) | Delta (%) |
 | :--- | :--- | :--- | :--- | :--- |
 | **SHA-256** | Scalar | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) | *—* |
-| **SHA-256** | ARMv8 Crypto | *— MB/s* | *— MB/s* | *—* |
+| **SHA-256** | ARMv8 Crypto | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | *— MB/s* | *—* |
 | **AES-128** | Scalar | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Hardware | *— MB/s* | *— MB/s* | *—* |
 | **Ed25519** | Scalar | *— ops/sec* | *— ops/sec* | *—* |
@@ -75,3 +75,19 @@ criterion confirms (`sha256_43B` ≈ 520 ns, `sha256_4KiB` ≈ 32.6 µs).
 Scalar verdict: statistical dead heat at small inputs; C edges ahead ~2–3% at 4 KiB.
 5/5 unit tests pass (KATs incl. padding boundaries); vectors regenerated and
 round-trip verified after a transcription error in the original `kats.txt`.
+
+### SHA-256, Accelerated Track — C side, ARMv8 Crypto Extensions (2026-08-22)
+
+Implementation: `c/src/sha256_neon.c` — `vsha256hq`/`vsha256h2q` state updates +
+`vsha256su0q`/`vsha256su1q` schedule expansion (pattern after Jeffrey Walton's
+public-domain intrinsics port / mbedTLS). Compiles with plain Apple Clang arm64
+target; falls back to scalar off-ARM. Selected via `--neon` flag.
+
+| Input size | Scalar | ARMv8 Crypto | Speedup |
+| :--- | :--- | :--- | :--- |
+| 43 B | ~521 ns (~78.7 MB/s) | **~44 ns** | ~11.8x |
+| 4 KiB | ~32.9 µs (~118 MB/s) | **~3.10 µs** (~1262 MB/s) | ~10.4x |
+
+All KAT vectors pass through both scalar and neon paths. The Crypto Extensions
+replace 64 rounds of scalar mixing with `SHA256H`/`SHA256H2`, which is where the
+order-of-magnitude gain comes from.
