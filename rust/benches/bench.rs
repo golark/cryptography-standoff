@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rust_vs_c::sha256::{sha256, DIGEST_SIZE};
+use rust_vs_c::sha256_neon::sha256_neon;
 
 fn bench_sha256(c: &mut Criterion) {
     let small = b"The quick brown fox jumps over the lazy dog";
@@ -17,6 +18,22 @@ fn bench_sha256(c: &mut Criterion) {
         b.iter(|| {
             let mut d = [0u8; DIGEST_SIZE];
             sha256(criterion::black_box(&large), &mut d);
+            d
+        })
+    });
+
+    c.bench_function("sha256_neon_43B", |b| {
+        b.iter(|| {
+            let mut d = [0u8; DIGEST_SIZE];
+            sha256_neon(criterion::black_box(small), &mut d);
+            d
+        })
+    });
+
+    c.bench_function("sha256_neon_4KiB", |b| {
+        b.iter(|| {
+            let mut d = [0u8; DIGEST_SIZE];
+            sha256_neon(criterion::black_box(&large), &mut d);
             d
         })
     });

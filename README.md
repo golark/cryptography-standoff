@@ -36,7 +36,7 @@ A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEO
 | Algorithm | Variant | C (Apple Clang) | Rust (`rustc`) | Delta (%) |
 | :--- | :--- | :--- | :--- | :--- |
 | **SHA-256** | Scalar | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) | *—* |
-| **SHA-256** | ARMv8 Crypto | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | *— MB/s* | *—* |
+| **SHA-256** | ARMv8 Crypto | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | **~957 MB/s** (43 B) / **~1260 MB/s** (4 KiB) | *—* |
 | **AES-128** | Scalar | *— MB/s* | *— MB/s* | *—* |
 | **AES-128** | Hardware | *— MB/s* | *— MB/s* | *—* |
 | **Ed25519** | Scalar | *— ops/sec* | *— ops/sec* | *—* |
@@ -91,3 +91,20 @@ target; falls back to scalar off-ARM. Selected via `--neon` flag.
 All KAT vectors pass through both scalar and neon paths. The Crypto Extensions
 replace 64 rounds of scalar mixing with `SHA256H`/`SHA256H2`, which is where the
 order-of-magnitude gain comes from.
+
+### SHA-256, Accelerated Track — Rust side, ARMv8 Crypto Extensions (2026-08-22)
+
+Implementation: `rust/src/sha256_neon.rs` — `core::arch::aarch64` intrinsics
+(`vsha256hq_u32`/`vsha256h2q_u32`/`vsha256su0q_u32`/`vsha256su1q_u32`), same
+group-interleaved pattern as the C version. Built with `target-feature=+sha2`
+(see `rust/.cargo/config.toml`). Falls back to scalar off-AArch64.
+
+| Input size | Scalar | ARMv8 Crypto | Speedup |
+| :--- | :--- | :--- | :--- |
+| 43 B | ~515 ns (~81 MB/s) | **~47 ns** (~957 MB/s) | ~10.9x |
+| 4 KiB | ~31.9 µs (~122 MB/s) | **~3.10 µs** (~1260 MB/s) | ~10.3x |
+
+Accelerated-track verdict: C and Rust are statistically tied on the silicon
+duel — both compile to the same SHA256H/H2/SU0/SU1 instruction sequence.
+10/10 unit tests pass (scalar + neon KATs); criterion benches included
+(`sha256_neon_43B`, `sha256_neon_4KiB`).
