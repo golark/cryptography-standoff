@@ -22,7 +22,7 @@ $(BUILD)/$(BIN): $(OBJS)
 	$(CC) $(CFLAGS) -I$(INC_DIR) -c $< -o $@
 
 test: $(BUILD)/$(BIN)
-	./$(BUILD)/$(BIN)
+	./$(BUILD)/$(BIN) --selftest
 
 bench: $(BUILD)/$(BIN)
 	./$(BUILD)/$(BIN) --bench
