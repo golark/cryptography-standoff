@@ -1,0 +1,5 @@
+[build]
+rustflags = ["-C", "target-feature=+sha2"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-feature=+sha2"]

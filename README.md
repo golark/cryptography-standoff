@@ -6,14 +6,14 @@ A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEO
 
 ## Benchmark Matrix 
 
-| Algorithm | Variant | C (Apple Clang) | Rust (`rustc`) | Delta (%) |
+| Algorithm | Variant | Implementation | C | Rust |
 | :--- | :--- | :--- | :--- | :--- |
-| **SHA-256** | Scalar - bit-wise ops | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) | *—* |
-| **SHA-256** | ARMv8 Crypto Intrinsics | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | **~957 MB/s** (43 B) / **~1260 MB/s** (4 KiB) | *—* |
-| **AES-128** | Scalar | **~225 MB/s** (48 B) / **~227 MB/s** (4 KiB) | *— MB/s* | *—* |
-| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| *— MB/s* | *— MB/s* | *—* |
-| **Ed25519** | Scalar | *— ops/sec* | *— ops/sec* | *—* |
-| **Ed25519** | NEON SIMD vectorized 128-bit limb operations | *— ops/sec* | *— ops/sec* | *—* |
+| **SHA-256** | Scalar - bit-wise ops | [sha256.c](c/src/sha256.c) · [sha256.rs](rust/src/sha256.rs) | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) |
+| **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | **~957 MB/s** (43 B) / **~1260 MB/s** (4 KiB) |
+| **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | **~225 MB/s** (48 B) / **~227 MB/s** (4 KiB) | **~253 MB/s** (48 B) / **~256 MB/s** (4 KiB) |
+| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| *—* | *— MB/s* | *— MB/s* |
+| **Ed25519** | Scalar | *—* | *— ops/sec* | *— ops/sec* |
+| **Ed25519** | NEON SIMD vectorized 128-bit limb operations | *—* | *— ops/sec* | *— ops/sec* |
 
 ---
 
@@ -111,3 +111,30 @@ is really 48 B. Values below are the middle of 3 runs.
 Throughput is flat across sizes (~15 cycles/byte on this part); the ARMv8 Crypto
 Extensions track (`aese`/`aesmc`) is where the expected order-of-magnitude gap
 will show up next.
+
+### AES-128, Scalar Track — Rust side (2026-08-24)
+
+Implementation: `rust/src/aes128.rs` — same T-table design as the C side
+(struct-based API: `Aes128::new` key schedule, `encrypt_block`, `encrypt_ecb`
+via `chunks_exact`). Tables extracted mechanically from `c/src/aes128.c` so both
+languages run byte-identical constants. Built with `--release` (opt-level 3,
+LTO, codegen-units=1).
+
+Verification: 4 unit-test KATs (FIPS-197 C.1, SP 800-38A F.1.1 x4 ECB sequence,
+zero and all-ff vectors) pass via `cargo test --release`; clippy clean. CLI
+ciphertexts verified byte-identical to the C binary across 48 B / 4 KiB / odd-length
+(777 B) inputs under the shared demo key.
+
+Bench method: identical harness (`cargo run --release -- --bench --aes`,
+1000 warmups, `Instant` monotonic timing); zero-padding to block boundary with
+throughput counted on padded length, matching C. Middle of 3 runs:
+
+| Input size | Iterations | Avg ns/block | Throughput |
+| :--- | :--- | :--- | :--- |
+| 43 B → 48 B | 200,000 | ~60 | ~253 MB/s |
+| 4 KiB | 10,000 | ~59 | ~256 MB/s |
+
+Rust verdict: ~12% ahead of C at the same algorithm (~60 vs ~68 ns/block) —
+bounds-checked indexing elides to unchecked addressing here, and LTO/codegen-units=1
+schedules the table-lookup chains slightly better. Criterion benches included
+(`aes128_48B`, `aes128_4KiB`).
