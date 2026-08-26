@@ -1,7 +1,7 @@
 **Rust** vs **C** on an ARMv8-A NEON; Scalar, vs Neon-Intrinsics for SHA-256, and AES-128. 
 
 - Rust beats C in scalar compute for AES-128 ( with 12% higher throughput ), whereas C is marginally (3%) faster on SHA-256 scalar. 
-I reckon with enough sweat one could optimize C code to match Rust for AES-128. 
+I reckon with enough sweat ( or AI Credits these days ) one could optimize C code to match Rust for AES-128. 
 
 - ARMv8 Crypto Extensions deliver an order-of-magnitude speedup in both algorithms; the scalar vs accelerated gap dwarfs the C vs Rust gap ( 10-34x speed up over scalar).
 
