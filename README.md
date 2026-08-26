@@ -1,4 +1,9 @@
-Pit **Rust** against **C** on an ARMv8-A NEON. Scalar, vs Neon-Intrinsics for SHA-256, AES-128 and ED25519 - the usual suspects. 
+**Rust** vs **C** on an ARMv8-A NEON; Scalar, vs Neon-Intrinsics for SHA-256, and AES-128. 
+
+- Rust beats C in scalar compute for AES-128 ( with 12% higher throughput ), whereas C is marginally (3%) faster on SHA-256 scalar. 
+I reckon with enough sweat one could optimize C code to match Rust for AES-128. 
+
+- ARMv8 Crypto Extensions deliver an order-of-magnitude speedup in both algorithms; the scalar vs accelerated gap dwarfs the C vs Rust gap ( 10-34x speedm up over scalar).
 
 
 
@@ -11,25 +16,18 @@ Pit **Rust** against **C** on an ARMv8-A NEON. Scalar, vs Neon-Intrinsics for SH
 | **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~1262 MB/s** (4 KiB) | **~1260 MB/s** (4 KiB) |
 | **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | **~227 MB/s** (4 KiB) | **~256 MB/s** (4 KiB) |
 | **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| [aes128_neon.c](c/src/aes128_neon.c) · [aes128_neon.rs](rust/src/aes128_neon.rs) | **~7400 MB/s** (4 KiB) | **~8780 MB/s** (4 KiB) |
-| **Ed25519** | Scalar | *—* | *— ops/sec* | *— ops/sec* |
-| **Ed25519** | NEON SIMD vectorized 128-bit limb operations | *—* | *— ops/sec* | *— ops/sec* |
-
 ---
 
 ## Hardware
 
-- **SoC:** Apple M1 (ARMv8-A)
-- **OS:** macOS 26.5.1
+- **SoC:** ARMv8-A 
 - **C toolchain:** Apple Clang 21.0.0 (`cc -O2 -Wall -Wextra -std=c11`)
 - **Rust toolchain:** rustc stable (`--release`, opt-level 3, LTO, codegen-units=1)
 - **SHA-256 intrinsics:** `vsha256hq_u32`, `vsha256h2q_u32`, `vsha256su0q_u32`, `vsha256su1q_u32`
 - **AES-128 intrinsics:** `vaeseq_u8`, `vaesmcq_u8`
 
-## Results  
-
 ### SHA-256, Scalar Track — C side (2026-08-22)
 
-Environment: Apple M1 (ARMv8-A), macOS 26.5.1, Apple clang 21.0.0 (`cc -O2 -Wall -Wextra -std=c11`).
 Method: `./rust-vs-c --bench <input> <iters>` — 1000 warmup hashes, then N timed iterations
 via `CLOCK_MONOTONIC`; reports average ns/hash and throughput. Values below are the
 middle of 3 runs.
@@ -43,7 +41,6 @@ Reference digests verified against `hashlib.sha256` across 9 vectors including t
 
 ### SHA-256, Scalar Track — Rust side (2026-08-22)
 
-Environment: Apple M1, rustc stable, `--release` (opt-level 3, LTO, codegen-units=1).
 Method: identical harness to C (`--bench`, 1000 warmup, `Instant` monotonic timing);
 criterion confirms (`sha256_43B` ≈ 520 ns, `sha256_4KiB` ≈ 32.6 µs).
 
@@ -158,11 +155,9 @@ track — the KATs caught it immediately.
 
 | Input size | Scalar | ARMv8 Crypto | Speedup |
 | :--- | :--- | :--- | :--- |
-| 43 B → 48 B | ~225 MB/s (~68 ns/block) | **~1330 MB/s** (~12 ns/block) | ~5.9x |
 | 4 KiB | ~227 MB/s (~67 ns/block) | **~7400 MB/s** (~2.1 ns/block) | ~33x |
 
-The small-input number is dominated by per-call key packing; at 4 KiB the crypto
-instructions run at ~0.6 cycles/byte. All KATs pass through both paths.
+At 4 KiB the crypto instructions run at ~0.6 cycles/byte. All KATs pass through both paths.
 
 ### AES-128, Accelerated Track — Rust side, ARMv8 Crypto Extensions (2026-08-24)
 
@@ -178,10 +173,8 @@ benches added (`aes128_neon_48B`, `aes128_neon_4KiB`).
 
 | Input size | Scalar | ARMv8 Crypto | Speedup |
 | :--- | :--- | :--- | :--- |
-| 43 B → 48 B | ~253 MB/s (~60 ns/block) | **~6250 MB/s** (~2.4 ns/block) | ~25x |
 | 4 KiB | ~256 MB/s (~59 ns/block) | **~8780 MB/s** (~1.75 ns/block) | ~34x |
 
 Accelerated-track verdict: rustc fully unrolls the 10 rounds with keys held in
-registers and folds the explicit VEORs algebraically, so it wins big at tiny
-inputs (~6250 vs ~1330 MB/s at 48 B, where clang's rolled loop pays per-call key
-packing) and leads by ~19% at 4 KiB. Same instruction stream, better scheduling.
+registers and folds the explicit VEORs algebraically, and leads by ~19% at 4 KiB.
+Same instruction stream, better scheduling.
