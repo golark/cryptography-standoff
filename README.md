@@ -3,7 +3,7 @@
 - Rust beats C in scalar compute for AES-128 ( with 12% higher throughput ), whereas C is marginally (3%) faster on SHA-256 scalar. 
 I reckon with enough sweat one could optimize C code to match Rust for AES-128. 
 
-- ARMv8 Crypto Extensions deliver an order-of-magnitude speedup in both algorithms; the scalar vs accelerated gap dwarfs the C vs Rust gap ( 10-34x speedm up over scalar).
+- ARMv8 Crypto Extensions deliver an order-of-magnitude speedup in both algorithms; the scalar vs accelerated gap dwarfs the C vs Rust gap ( 10-34x speed up over scalar).
 
 
 
@@ -12,10 +12,10 @@ I reckon with enough sweat one could optimize C code to match Rust for AES-128.
 
 | Algorithm | Variant | Implementation | C | Rust |
 | :--- | :--- | :--- | :--- | :--- |
-| **SHA-256** | Scalar - bit-wise ops | [sha256.c](c/src/sha256.c) · [sha256.rs](rust/src/sha256.rs) | **~122 MB/s** (4 KiB) | **~119 MB/s** (4 KiB) |
-| **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~1262 MB/s** (4 KiB) | **~1260 MB/s** (4 KiB) |
-| **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | **~227 MB/s** (4 KiB) | **~256 MB/s** (4 KiB) |
-| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| [aes128_neon.c](c/src/aes128_neon.c) · [aes128_neon.rs](rust/src/aes128_neon.rs) | **~7400 MB/s** (4 KiB) | **~8780 MB/s** (4 KiB) |
+| **SHA-256** | Scalar - bit-wise ops | [sha256.c](c/src/sha256.c) · [sha256.rs](rust/src/sha256.rs) | **~122 MB/s** (4 KiB) | ~119 MB/s |
+| **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~1262 MB/s** | ~1260 MB/s  |
+| **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | ~227 MB/s | **~256 MB/s**  |
+| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| [aes128_neon.c](c/src/aes128_neon.c) · [aes128_neon.rs](rust/src/aes128_neon.rs) | ~7400 MB/s | **~8780 MB/s** |
 ---
 
 ## Hardware
