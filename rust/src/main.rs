@@ -2,12 +2,17 @@ use std::env;
 use std::hint::black_box;
 use std::time::Instant;
 
-use rust_vs_c::aes128::{Aes128, BLOCK_SIZE as AES_BLOCK, KEY_SIZE as AES_KEY_SIZE};
+use rust_vs_c::aes128::Aes128;
+use rust_vs_c::aes128_neon::aes128_encrypt_ecb_neon;
 use rust_vs_c::sha256::{hex_digest, sha256, DIGEST_SIZE};
 use rust_vs_c::sha256_neon::sha256_neon;
 
+type Aes128EcbFn = fn(&Aes128, &[u8], &mut [u8]);
+
 // Demo key for the AES track ("rust-vs-c aes128", 16 bytes).
-const AES_DEMO_KEY: [u8; AES_KEY_SIZE] = *b"rust-vs-c aes128";
+const AES_DEMO_KEY: [u8; 16] = *b"rust-vs-c aes128";
+
+const AES_BLOCK: usize = 16;
 
 type Sha256Fn = fn(&[u8], &mut [u8; DIGEST_SIZE]);
 
@@ -54,7 +59,7 @@ fn padded_len(len: usize) -> usize {
     plen.max(AES_BLOCK)
 }
 
-fn run_bench_aes(input: &[u8], iters: u64) {
+fn run_bench_aes(ecb: Aes128EcbFn, name: &str, input: &[u8], iters: u64) {
     let ctx = Aes128::new(&AES_DEMO_KEY);
     let plen = padded_len(input.len());
     let nblocks = plen / AES_BLOCK;
@@ -66,13 +71,13 @@ fn run_bench_aes(input: &[u8], iters: u64) {
 
     // warmup
     for _ in 0..1000 {
-        ctx.encrypt_ecb(black_box(&buf), &mut out);
+        ecb(&ctx, black_box(&buf), &mut out);
         sink ^= out[0];
     }
 
     let t = Timer::start();
     for _ in 0..iters {
-        ctx.encrypt_ecb(black_box(&buf), &mut out);
+        ecb(&ctx, black_box(&buf), &mut out);
         sink ^= out[0];
     }
     let elapsed = t.elapsed_secs();
@@ -81,8 +86,8 @@ fn run_bench_aes(input: &[u8], iters: u64) {
     let mbps = (plen as f64 * iters as f64 / elapsed) / (1024.0 * 1024.0);
 
     println!(
-        "bench [aes128 scalar]: {} bytes ({} blocks) x {} iters",
-        plen, nblocks, iters
+        "bench [aes128 {}]: {} bytes ({} blocks) x {} iters",
+        name, plen, nblocks, iters
     );
     println!("total:      {:.3} ms", elapsed * 1e3);
     println!("avg:        {:.1} ns/block", avg_ns_block);
@@ -123,16 +128,17 @@ fn main() {
         }
     }
 
-    if aes && impl_name == "neon" {
-        eprintln!("--neon is not supported for --aes yet");
-        std::process::exit(1);
-    }
-
     if positional.len() > 2 || (!bench && positional.is_empty()) {
         println!("Usage: rust_vs_c [--sha256|--aes] [--neon|--scalar] <input string>");
         println!("       rust_vs_c --bench [--sha256|--aes] [--neon|--scalar] [input string] [iterations]");
         std::process::exit(1);
     }
+
+    let aes_ecb: Aes128EcbFn = if impl_name == "neon" {
+        aes128_encrypt_ecb_neon
+    } else {
+        Aes128::encrypt_ecb
+    };
 
     let msg = positional
         .first()
@@ -146,7 +152,7 @@ fn main() {
 
     if bench {
         if aes {
-            run_bench_aes(input, iters);
+            run_bench_aes(aes_ecb, impl_name, input, iters);
         } else {
             run_bench(f, impl_name, input, iters);
         }
@@ -159,7 +165,7 @@ fn main() {
         let mut buf = vec![0u8; plen];
         buf[..input.len()].copy_from_slice(input);
         let mut out = vec![0u8; plen];
-        ctx.encrypt_ecb(&buf, &mut out);
+        aes_ecb(&ctx, &buf, &mut out);
         print_hex(&out);
         return;
     }

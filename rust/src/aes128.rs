@@ -207,7 +207,7 @@ fn get_u32(b: &[u8]) -> u32 {
 }
 
 pub struct Aes128 {
-    rk: [u32; 4 * (ROUNDS + 1)],
+    pub(crate) rk: [u32; 4 * (ROUNDS + 1)],
 }
 
 impl Aes128 {

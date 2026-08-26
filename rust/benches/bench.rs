@@ -1,5 +1,6 @@
 use criterion::{criterion_group, criterion_main, Criterion};
 use rust_vs_c::aes128::Aes128;
+use rust_vs_c::aes128_neon::aes128_encrypt_ecb_neon;
 use rust_vs_c::sha256::{sha256, DIGEST_SIZE};
 use rust_vs_c::sha256_neon::sha256_neon;
 
@@ -60,6 +61,22 @@ fn bench_aes128(c: &mut Criterion) {
         b.iter(|| {
             let mut out = vec![0u8; 4096];
             Aes128::encrypt_ecb(&ctx, criterion::black_box(&large), &mut out);
+            out
+        })
+    });
+
+    c.bench_function("aes128_neon_48B", |b| {
+        b.iter(|| {
+            let mut out = [0u8; 48];
+            aes128_encrypt_ecb_neon(&ctx, criterion::black_box(small), &mut out);
+            out
+        })
+    });
+
+    c.bench_function("aes128_neon_4KiB", |b| {
+        b.iter(|| {
+            let mut out = vec![0u8; 4096];
+            aes128_encrypt_ecb_neon(&ctx, criterion::black_box(&large), &mut out);
             out
         })
     });

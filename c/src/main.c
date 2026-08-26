@@ -14,6 +14,9 @@ static const uint8_t AES_DEMO_KEY[AES128_KEY_SIZE] = {
 };
 
 typedef void (*sha256_fn)(const uint8_t *, size_t, uint8_t *);
+typedef void (*aes128_ecb_fn)(const aes128_ctx *, const uint8_t *, size_t, uint8_t *);
+typedef void (*aes128_block_fn)(const aes128_ctx *, const uint8_t[AES128_BLOCK_SIZE],
+                                uint8_t[AES128_BLOCK_SIZE]);
 
 enum { MODE_SHA256, MODE_AES };
 
@@ -86,7 +89,8 @@ static int run_bench_sha(sha256_fn fn, const char *name, const uint8_t *input, s
     return 0;
 }
 
-static int run_bench_aes(const uint8_t *input, size_t len, long iters) {
+static int run_bench_aes(aes128_ecb_fn ecb, const char *name, const uint8_t *input, size_t len,
+                         long iters) {
     aes128_ctx ctx;
     aes128_key_expand(&ctx, AES_DEMO_KEY);
 
@@ -109,13 +113,13 @@ static int run_bench_aes(const uint8_t *input, size_t len, long iters) {
 
     volatile uint8_t sink = 0;
     for (int i = 0; i < 1000; ++i) {
-        aes128_encrypt_ecb(&ctx, buf, plen, out);
+        ecb(&ctx, buf, plen, out);
         sink ^= out[0];
     }
 
     double t0 = now_sec();
     for (long i = 0; i < iters; ++i) {
-        aes128_encrypt_ecb(&ctx, buf, plen, out);
+        ecb(&ctx, buf, plen, out);
         sink ^= out[0];
     }
     double elapsed = now_sec() - t0;
@@ -123,7 +127,7 @@ static int run_bench_aes(const uint8_t *input, size_t len, long iters) {
     double avg_ns_block = (elapsed * 1e9) / ((double)iters * (double)nblocks);
     double mbps = ((double)plen * (double)iters / elapsed) / (1024.0 * 1024.0);
 
-    printf("bench [aes128 scalar]: %zu bytes (%zu blocks) x %ld iters\n", plen, nblocks, iters);
+    printf("bench [aes128 %s]: %zu bytes (%zu blocks) x %ld iters\n", name, plen, nblocks, iters);
     printf("total:      %.3f ms\n", elapsed * 1e3);
     printf("avg:        %.1f ns/block\n", avg_ns_block);
     printf("throughput: %.2f MB/s\n", mbps);
@@ -167,6 +171,43 @@ static int run_selftest(void) {
 
     int fails = 0;
 
+    static const struct {
+        aes128_block_fn block;
+        aes128_ecb_fn ecb;
+        const char *tag;
+    } AES_IMPLS[] = {
+        {aes128_encrypt_block, aes128_encrypt_ecb, "scalar"},
+        {aes128_encrypt_block_neon, aes128_encrypt_ecb_neon, "neon"},
+    };
+
+    for (size_t v = 0; v < sizeof(AES_IMPLS) / sizeof(AES_IMPLS[0]); ++v) {
+        for (size_t i = 0; i < sizeof(AES_KATS) / sizeof(AES_KATS[0]); ++i) {
+            uint8_t key[AES128_KEY_SIZE], pt[AES128_BLOCK_SIZE], ct[AES128_BLOCK_SIZE],
+                expect[AES128_BLOCK_SIZE];
+            unhex(AES_KATS[i].key, key);
+            unhex(AES_KATS[i].pt, pt);
+            unhex(AES_KATS[i].ct, expect);
+            aes128_ctx ctx;
+            aes128_key_expand(&ctx, key);
+            AES_IMPLS[v].block(&ctx, pt, ct);
+            int ok = memcmp(ct, expect, AES128_BLOCK_SIZE) == 0;
+            printf("aes128 kat [%s] %s %s\n", AES_IMPLS[v].tag, AES_KATS[i].ct,
+                   ok ? "PASS" : "FAIL");
+            fails += !ok;
+        }
+
+        uint8_t key[AES128_KEY_SIZE], pt[64], ct[64], expect[64];
+        unhex(SP800_KEY, key);
+        size_t ptlen = unhex(SP800_PT, pt);
+        unhex(SP800_CT, expect);
+        aes128_ctx ctx;
+        aes128_key_expand(&ctx, key);
+        AES_IMPLS[v].ecb(&ctx, pt, ptlen, ct);
+        int ok = memcmp(ct, expect, ptlen) == 0;
+        printf("aes128 sp800-38a ecb x4 [%s] %s\n", AES_IMPLS[v].tag, ok ? "PASS" : "FAIL");
+        fails += !ok;
+    }
+
     for (size_t i = 0; i < sizeof(SHA_KATS) / sizeof(SHA_KATS[0]); ++i) {
         uint8_t digest[SHA256_DIGEST_SIZE];
         uint8_t expect[SHA256_DIGEST_SIZE];
@@ -176,31 +217,6 @@ static int run_selftest(void) {
         printf("sha256 kat %-46s %s\n", SHA_KATS[i].msg, ok ? "PASS" : "FAIL");
         fails += !ok;
     }
-
-    for (size_t i = 0; i < sizeof(AES_KATS) / sizeof(AES_KATS[0]); ++i) {
-        uint8_t key[AES128_KEY_SIZE], pt[AES128_BLOCK_SIZE], ct[AES128_BLOCK_SIZE],
-            expect[AES128_BLOCK_SIZE];
-        unhex(AES_KATS[i].key, key);
-        unhex(AES_KATS[i].pt, pt);
-        unhex(AES_KATS[i].ct, expect);
-        aes128_ctx ctx;
-        aes128_key_expand(&ctx, key);
-        aes128_encrypt_block(&ctx, pt, ct);
-        int ok = memcmp(ct, expect, AES128_BLOCK_SIZE) == 0;
-        printf("aes128 kat %s %s\n", AES_KATS[i].ct, ok ? "PASS" : "FAIL");
-        fails += !ok;
-    }
-
-    uint8_t key[AES128_KEY_SIZE], pt[64], ct[64], expect[64];
-    unhex(SP800_KEY, key);
-    size_t ptlen = unhex(SP800_PT, pt);
-    unhex(SP800_CT, expect);
-    aes128_ctx ctx;
-    aes128_key_expand(&ctx, key);
-    aes128_encrypt_ecb(&ctx, pt, ptlen, ct);
-    int ok = memcmp(ct, expect, ptlen) == 0;
-    printf("aes128 sp800-38a ecb x4       %s\n", ok ? "PASS" : "FAIL");
-    fails += !ok;
 
     printf("%s (%d failure%s)\n", fails ? "SELFTEST FAILED" : "all selftests passed", fails,
            fails == 1 ? "" : "s");
@@ -243,11 +259,6 @@ int main(int argc, char *argv[]) {
         return run_selftest();
     }
 
-    if (mode == MODE_AES && strcmp(impl_name, "neon") == 0) {
-        fprintf(stderr, "--neon is not supported for --aes yet\n");
-        return 1;
-    }
-
     if (npos > 2 || (!bench && npos < 1)) {
         printf("Usage: rust-vs-c [--sha256|--aes] [--neon|--scalar] <input string>\n");
         printf("       rust-vs-c --bench [--sha256|--aes] [--neon|--scalar] [input string] [iterations]\n");
@@ -261,7 +272,9 @@ int main(int argc, char *argv[]) {
 
     if (bench) {
         if (mode == MODE_AES) {
-            return run_bench_aes((const uint8_t *)msg, len, iters);
+            aes128_ecb_fn aes_fn =
+                (strcmp(impl_name, "neon") == 0) ? aes128_encrypt_ecb_neon : aes128_encrypt_ecb;
+            return run_bench_aes(aes_fn, impl_name, (const uint8_t *)msg, len, iters);
         }
         return run_bench_sha(fn, impl_name, (const uint8_t *)msg, len, iters);
     }
@@ -269,19 +282,25 @@ int main(int argc, char *argv[]) {
     if (mode == MODE_AES) {
         aes128_ctx ctx;
         aes128_key_expand(&ctx, AES_DEMO_KEY);
+        aes128_ecb_fn aes_fn =
+            (strcmp(impl_name, "neon") == 0) ? aes128_encrypt_ecb_neon : aes128_encrypt_ecb;
         size_t plen = ((len + AES128_BLOCK_SIZE - 1) / AES128_BLOCK_SIZE) * AES128_BLOCK_SIZE;
         if (plen == 0) {
             plen = AES128_BLOCK_SIZE;
         }
         uint8_t *buf = calloc(plen, 1);
-        if (!buf) {
+        uint8_t *out = malloc(plen);
+        if (!buf || !out) {
             fprintf(stderr, "out of memory\n");
+            free(buf);
+            free(out);
             return 1;
         }
         memcpy(buf, msg, len);
-        aes128_encrypt_ecb(&ctx, buf, plen, buf);
-        print_hex(buf, plen);
+        aes_fn(&ctx, buf, plen, out);
+        print_hex(out, plen);
         free(buf);
+        free(out);
         return 0;
     }
 

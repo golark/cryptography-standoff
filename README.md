@@ -1,23 +1,31 @@
-A compact benchmarking blueprint to pit **Rust** against **C** on an ARMv8-A NEON. Scalar, vs Neon-Intrinsics for SHA-256, AES-128 and ED25519 - usual suspects
+Pit **Rust** against **C** on an ARMv8-A NEON. Scalar, vs Neon-Intrinsics for SHA-256, AES-128 and ED25519 - the usual suspects. 
 
 
 
 ---
 
-## Benchmark Matrix 
 
 | Algorithm | Variant | Implementation | C | Rust |
 | :--- | :--- | :--- | :--- | :--- |
-| **SHA-256** | Scalar - bit-wise ops | [sha256.c](c/src/sha256.c) · [sha256.rs](rust/src/sha256.rs) | **~79 MB/s** (43 B) / **~122 MB/s** (4 KiB) | **~80 MB/s** (43 B) / **~119 MB/s** (4 KiB) |
-| **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~931 MB/s** (43 B) / **~1262 MB/s** (4 KiB) | **~957 MB/s** (43 B) / **~1260 MB/s** (4 KiB) |
-| **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | **~225 MB/s** (48 B) / **~227 MB/s** (4 KiB) | **~253 MB/s** (48 B) / **~256 MB/s** (4 KiB) |
-| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| *—* | *— MB/s* | *— MB/s* |
+| **SHA-256** | Scalar - bit-wise ops | [sha256.c](c/src/sha256.c) · [sha256.rs](rust/src/sha256.rs) | **~122 MB/s** (4 KiB) | **~119 MB/s** (4 KiB) |
+| **SHA-256** | ARMv8 Crypto Intrinsics | [sha256_neon.c](c/src/sha256_neon.c) · [sha256_neon.rs](rust/src/sha256_neon.rs) | **~1262 MB/s** (4 KiB) | **~1260 MB/s** (4 KiB) |
+| **AES-128** | Scalar | [aes128.c](c/src/aes128.c) · [aes128.rs](rust/src/aes128.rs) | **~227 MB/s** (4 KiB) | **~256 MB/s** (4 KiB) |
+| **AES-128** | ARMv8 Crypto Extensions (aese/aesmc)| [aes128_neon.c](c/src/aes128_neon.c) · [aes128_neon.rs](rust/src/aes128_neon.rs) | **~7400 MB/s** (4 KiB) | **~8780 MB/s** (4 KiB) |
 | **Ed25519** | Scalar | *—* | *— ops/sec* | *— ops/sec* |
 | **Ed25519** | NEON SIMD vectorized 128-bit limb operations | *—* | *— ops/sec* | *— ops/sec* |
 
 ---
 
-## Results Log
+## Hardware
+
+- **SoC:** Apple M1 (ARMv8-A)
+- **OS:** macOS 26.5.1
+- **C toolchain:** Apple Clang 21.0.0 (`cc -O2 -Wall -Wextra -std=c11`)
+- **Rust toolchain:** rustc stable (`--release`, opt-level 3, LTO, codegen-units=1)
+- **SHA-256 intrinsics:** `vsha256hq_u32`, `vsha256h2q_u32`, `vsha256su0q_u32`, `vsha256su1q_u32`
+- **AES-128 intrinsics:** `vaeseq_u8`, `vaesmcq_u8`
+
+## Results  
 
 ### SHA-256, Scalar Track — C side (2026-08-22)
 
@@ -28,7 +36,6 @@ middle of 3 runs.
 
 | Input size | Iterations | Avg time/hash | Throughput |
 | :--- | :--- | :--- | :--- |
-| 43 B ("The quick brown fox...") | 200,000 | ~519 ns | ~79.0 MB/s |
 | 4 KiB | 10,000 | ~32.0 µs | ~122.0 MB/s |
 
 Reference digests verified against `hashlib.sha256` across 9 vectors including the
@@ -42,7 +49,6 @@ criterion confirms (`sha256_43B` ≈ 520 ns, `sha256_4KiB` ≈ 32.6 µs).
 
 | Input size | Iterations | Avg time/hash | Throughput |
 | :--- | :--- | :--- | :--- |
-| 43 B ("The quick brown fox...") | 200,000 | ~513 ns | ~79.9 MB/s |
 | 4 KiB | 10,000 | ~32.9 µs | ~118.8 MB/s |
 
 Scalar verdict: statistical dead heat at small inputs; C edges ahead ~2–3% at 4 KiB.
@@ -58,7 +64,6 @@ target; falls back to scalar off-ARM. Selected via `--neon` flag.
 
 | Input size | Scalar | ARMv8 Crypto | Speedup |
 | :--- | :--- | :--- | :--- |
-| 43 B | ~521 ns (~78.7 MB/s) | **~44 ns** | ~11.8x |
 | 4 KiB | ~32.9 µs (~118 MB/s) | **~3.10 µs** (~1262 MB/s) | ~10.4x |
 
 All KAT vectors pass through both scalar and neon paths. The Crypto Extensions
@@ -74,7 +79,6 @@ group-interleaved pattern as the C version. Built with `target-feature=+sha2`
 
 | Input size | Scalar | ARMv8 Crypto | Speedup |
 | :--- | :--- | :--- | :--- |
-| 43 B | ~515 ns (~81 MB/s) | **~47 ns** (~957 MB/s) | ~10.9x |
 | 4 KiB | ~31.9 µs (~122 MB/s) | **~3.10 µs** (~1260 MB/s) | ~10.3x |
 
 Accelerated-track verdict: C and Rust are statistically tied on the silicon
@@ -105,7 +109,6 @@ is really 48 B. Values below are the middle of 3 runs.
 
 | Input size | Iterations | Avg ns/block | Throughput |
 | :--- | :--- | :--- | :--- |
-| 43 B → 48 B | 200,000 | ~68 | ~225 MB/s |
 | 4 KiB | 10,000 | ~67 | ~227 MB/s |
 
 Throughput is flat across sizes (~15 cycles/byte on this part); the ARMv8 Crypto
@@ -131,10 +134,54 @@ throughput counted on padded length, matching C. Middle of 3 runs:
 
 | Input size | Iterations | Avg ns/block | Throughput |
 | :--- | :--- | :--- | :--- |
-| 43 B → 48 B | 200,000 | ~60 | ~253 MB/s |
 | 4 KiB | 10,000 | ~59 | ~256 MB/s |
 
 Rust verdict: ~12% ahead of C at the same algorithm (~60 vs ~68 ns/block) —
 bounds-checked indexing elides to unchecked addressing here, and LTO/codegen-units=1
 schedules the table-lookup chains slightly better. Criterion benches included
 (`aes128_48B`, `aes128_4KiB`).
+
+### AES-128, Accelerated Track — C side, ARMv8 Crypto Extensions (2026-08-24)
+
+Implementation: `c/src/aes128_neon.c` — `vaeseq_u8`/`vaesmcq_u8` rounds over the
+scalar key schedule (`aes128_key_expand` unchanged; each 4-word group re-packed
+BE into one 128-bit vector per call). Falls back to scalar off-ARM. Selected via
+`--neon` with `--aes`; selftests now run every AES KAT through both paths.
+
+Gotcha worth recording: ARMv8's AESE applies its key operand BEFORE SubBytes,
+not after — passing standard round keys directly produces wrong ciphertext.
+Verified empirically against FIPS-197 Appendix B.1 intermediates; the correct
+composition runs AESE/AESMC with a zero key and XORs the round key explicitly
+after MixColumns (MixColumns linearity lets LLVM even fold these VEORs into the
+next round). First cut failed all KATs and was fixed the same way as the scalar
+track — the KATs caught it immediately.
+
+| Input size | Scalar | ARMv8 Crypto | Speedup |
+| :--- | :--- | :--- | :--- |
+| 43 B → 48 B | ~225 MB/s (~68 ns/block) | **~1330 MB/s** (~12 ns/block) | ~5.9x |
+| 4 KiB | ~227 MB/s (~67 ns/block) | **~7400 MB/s** (~2.1 ns/block) | ~33x |
+
+The small-input number is dominated by per-call key packing; at 4 KiB the crypto
+instructions run at ~0.6 cycles/byte. All KATs pass through both paths.
+
+### AES-128, Accelerated Track — Rust side, ARMv8 Crypto Extensions (2026-08-24)
+
+Implementation: `rust/src/aes128_neon.rs` — same composition as the C side
+(`core::arch::aarch64` intrinsics, zero-key AESE/AESMC + explicit round-key
+VEOR), sharing the scalar `Aes128::new` key schedule via a `pub(crate)` field.
+Built with `target-feature=+sha2,+aes` (see `.cargo/config.toml`). Falls back to
+scalar off-AArch64.
+
+Verification: unit KATs (FIPS-197 C.1, SP 800-38A x4) pass; CLI ciphertexts
+byte-identical to the C NEON binary at 48 B / 4 KiB; clippy clean. Criterion
+benches added (`aes128_neon_48B`, `aes128_neon_4KiB`).
+
+| Input size | Scalar | ARMv8 Crypto | Speedup |
+| :--- | :--- | :--- | :--- |
+| 43 B → 48 B | ~253 MB/s (~60 ns/block) | **~6250 MB/s** (~2.4 ns/block) | ~25x |
+| 4 KiB | ~256 MB/s (~59 ns/block) | **~8780 MB/s** (~1.75 ns/block) | ~34x |
+
+Accelerated-track verdict: rustc fully unrolls the 10 rounds with keys held in
+registers and folds the explicit VEORs algebraically, so it wins big at tiny
+inputs (~6250 vs ~1330 MB/s at 48 B, where clang's rolled loop pays per-call key
+packing) and leads by ~19% at 4 KiB. Same instruction stream, better scheduling.
